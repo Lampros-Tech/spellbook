@@ -5,7 +5,7 @@
     materialized = 'incremental',
     file_format = 'delta',
     incremental_strategy = 'merge',
-    unique_key = ['block_date', 'blockchain', 'project', 'version', 'tx_hash', 'evt_index'],
+    unique_key = ['tx_hash', 'evt_index'],
     post_hook='{{ expose_spells(\'["base"]\',
                                 "project",
                                 "gains_network",
@@ -36,7 +36,7 @@ WITH position_changes AS (
         'decrease' as action
     FROM {{ source('gains_network_base', 'GNSMultiCollatDiamond_evt_PositionSizeDecreaseExecuted') }}
     {% if is_incremental() %}
-    WHERE evt_block_time >= DATE_TRUNC('DAY', NOW() - INTERVAL '7' Day)
+    WHERE {{ incremental_predicate('evt_block_time') }}
     {% endif %}
 
     UNION ALL
@@ -61,9 +61,25 @@ WITH position_changes AS (
         'increase' as action
     FROM {{ source('gains_network_base', 'GNSMultiCollatDiamond_evt_PositionSizeIncreaseExecuted') }}
     {% if is_incremental() %}
-    WHERE evt_block_time >= DATE_TRUNC('DAY', NOW() - INTERVAL '7' Day)
+    WHERE {{ incremental_predicate('evt_block_time') }}
     {% endif %}
 ),
+
+transactions_filtered AS (
+    SELECT
+        hash,
+        block_number,
+        "from",
+        "to",
+        block_time
+    FROM {{ source('base', 'transactions') }}
+    WHERE {% if is_incremental() %}
+        {{ incremental_predicate('block_time') }}
+    {% else %}
+        block_time >= TIMESTAMP '{{project_start_date}}'
+    {% endif %}
+),
+
 
 perps AS (
     SELECT
@@ -169,7 +185,7 @@ perps AS (
         '1' AS version,
         'gains_network' AS frontend,
         trader,
-        collateralDelta * leverageDelta AS volume_raw,  -- Adjust based on your needs
+        collateralDelta * leverageDelta AS volume_raw,  
         evt_tx_hash AS tx_hash,
         evt_index
     FROM position_changes
@@ -198,12 +214,6 @@ SELECT
     tx."to" AS tx_to,
     perps.evt_index
 FROM perps
-INNER JOIN {{ source('base', 'transactions') }} AS tx
+INNER JOIN transactions_filtered tx
     ON perps.tx_hash = tx.hash
     AND perps.block_number = tx.block_number
-    {% if not is_incremental() %}
-    AND tx.block_time >= DATE '{{project_start_date}}'
-    {% endif %}
-    {% if is_incremental() %}
-    AND tx.block_time >= DATE_TRUNC('DAY', NOW() - INTERVAL '7' Day)
-    {% endif %}

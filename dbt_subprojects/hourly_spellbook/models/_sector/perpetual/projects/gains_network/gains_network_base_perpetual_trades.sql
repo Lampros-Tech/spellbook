@@ -1,10 +1,10 @@
 {{ config(
     schema = 'gains_network_base',
     alias = 'perpetual_trades',
-    post_hook='{{ expose_spells(\'["base"]\',
-                                    "project",
-                                    "gains_network",
-                                    \'["princi"]\') }}'
+    post_hook='{{ expose_spells(blockchains = \'["base"]\',
+                                    spell_type = "project",
+                                    spell_name = "gains_network",
+                                    contributors = \'["princi"]\') }}'
         )
 }}
 
