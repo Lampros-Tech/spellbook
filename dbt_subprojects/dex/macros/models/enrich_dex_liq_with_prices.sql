@@ -23,14 +23,6 @@ WITH base_liquidity as (
         , decimals
     from
         {{ tokens_erc20_model }}
-    union all
-    --native tokens
-    select
-        blockchain
-        , {{var('ETH_ERC20_ADDRESS')}} as contract_address -- 0x00..00
-        , native_token_symbol as symbol
-        , 18 as decimals
-    from {{ source('evms','info') }}
 )
 , prices AS (
     SELECT
@@ -39,7 +31,7 @@ WITH base_liquidity as (
         , minute
         , price
     FROM
-        {{ source('prices','usd') }}
+        {{ source('prices','usd_with_native') }}
     {% if is_incremental() %}
     WHERE
         {{ incremental_predicate('minute') }}
@@ -57,7 +49,6 @@ WITH base_liquidity as (
         , base.id
         , base.tx_hash
         , base.evt_index
-        , base.salt
         , base.token0
         , base.token1
         , base.amount0_raw
@@ -86,7 +77,6 @@ WITH base_liquidity as (
             , en.id
             , en.tx_hash
             , en.evt_index
-            , en.salt
             , en.token0
             , en.token1
             , en.amount0_raw
@@ -118,7 +108,6 @@ SELECT
     , id
     , tx_hash
     , evt_index
-    , salt
     , token0
     , token1
     , amount0_raw

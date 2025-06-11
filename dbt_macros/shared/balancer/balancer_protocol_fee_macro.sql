@@ -1,6 +1,6 @@
 {% macro 
     balancer_v2_compatible_protocol_fee_macro(
-        blockchain, version, project_decoded_as, base_spells_namespace, pool_labels_spell
+        blockchain, version, project_decoded_as, base_spells_namespace, pool_labels_model
     ) 
 %}
 
@@ -11,8 +11,10 @@ WITH pool_labels AS (
                 name,
                 pool_type,
                 ROW_NUMBER() OVER (PARTITION BY address ORDER BY MAX(updated_at) DESC) AS num
-            FROM {{ pool_labels_spell }}
+            FROM {{ source('labels', pool_labels_model) }}
             WHERE blockchain = '{{blockchain}}'
+            AND source = 'query'
+            AND model_name = '{{pool_labels_model}}'
             GROUP BY 1, 2, 3) 
         WHERE num = 1
     ),
@@ -86,6 +88,17 @@ WITH pool_labels AS (
     ),
 
     daily_protocol_fee_collected AS (
+        -- flashloans are taken from the vault contract, there is no pool involved. 
+        SELECT
+            date_trunc('day', evt_block_time) AS day,
+            0xba12222222228d8ba445958a75a0704d566bf2c8 AS pool_id,
+            token AS token_address,
+            SUM(feeAmount) AS protocol_fee_amount_raw
+        FROM {{ source(project_decoded_as + '_' + blockchain, 'Vault_evt_FlashLoan') }} b
+        GROUP BY 1, 2, 3 
+
+        UNION ALL      
+
         SELECT
             date_trunc('day', evt_block_time) AS day,
             poolId AS pool_id,
@@ -103,7 +116,7 @@ WITH pool_labels AS (
             b.poolAddress AS token_address,
             sum(value) AS protocol_fee_amount_raw
         FROM {{ source(project_decoded_as + '_' + blockchain, 'Vault_evt_PoolRegistered') }} b
-        INNER JOIN {{ source('erc20_' + blockchain, 'evt_transfer') }} t
+        INNER JOIN {{ source('erc20_' + blockchain, 'evt_Transfer') }} t
             ON t.contract_address = b.poolAddress
             AND t."from" = 0x0000000000000000000000000000000000000000
             AND t."to" =
@@ -157,11 +170,11 @@ WITH pool_labels AS (
         f.day,
         f.pool_id,
         BYTEARRAY_SUBSTRING(f.pool_id,1,20) AS pool_address,
-        l.name AS pool_symbol,
+        CASE WHEN f.pool_id = 0xba12222222228d8ba445958a75a0704d566bf2c8 THEN 'flashloan' ELSE l.name END AS pool_symbol,
         '{{version}}' AS version,
         '{{blockchain}}' AS blockchain,
         l.pool_type,
-        'v2' AS fee_type,
+        CASE WHEN f.pool_id = 0xba12222222228d8ba445958a75a0704d566bf2c8 THEN 'flashloan' ELSE 'v2' END AS fee_type,
         f.token_address,
         f.token_symbol,
         SUM(f.token_amount_raw) AS token_amount_raw,
@@ -183,7 +196,7 @@ WITH pool_labels AS (
 
 {% macro 
     balancer_v3_compatible_protocol_fee_macro(
-        blockchain, version, project_decoded_as, base_spells_namespace, pool_labels_spell
+        blockchain, version, project_decoded_as, base_spells_namespace, pool_labels_model
     ) 
 %}
 
@@ -194,8 +207,10 @@ WITH pool_labels AS (
                 name,
                 pool_type,
                 ROW_NUMBER() OVER (PARTITION BY address ORDER BY MAX(updated_at) DESC) AS num
-            FROM {{ pool_labels_spell }}
+            FROM {{ source('labels', pool_labels_model) }}
             WHERE blockchain = '{{blockchain}}'
+            AND source = 'query'
+            AND model_name = '{{pool_labels_model}}'
             GROUP BY 1, 2, 3) 
         WHERE num = 1
     ),

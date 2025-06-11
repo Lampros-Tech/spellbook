@@ -1,6 +1,6 @@
 {% macro
     balancer_v2_compatible_bpt_prices_macro(
-        blockchain, version, project_decoded_as, base_spells_namespace, pool_labels_spell
+        blockchain, version, project_decoded_as, base_spells_namespace, pool_labels_model
     )
 %}
 
@@ -9,8 +9,10 @@ WITH pool_labels AS (
             address AS pool_id,
             name AS pool_symbol,
             pool_type
-        FROM {{ pool_labels_spell }}
+        FROM {{ source('labels', pool_labels_model) }}
         WHERE blockchain = '{{blockchain}}'
+        AND source = 'query'
+        AND model_name = '{{pool_labels_model}}'
     ),
 
 -- liquidity formulation, with a few simplifications, compared to liquidity spell
@@ -354,7 +356,7 @@ WITH pool_labels AS (
 
  {% macro
     balancer_v3_compatible_bpt_prices_macro(
-        blockchain, version, project_decoded_as, base_spells_namespace, pool_labels_spell
+        blockchain, version, project_decoded_as, base_spells_namespace, pool_labels_model
     )
 %}
 
@@ -363,8 +365,10 @@ WITH pool_labels AS (
             address AS pool_id,
             name AS pool_symbol,
             pool_type
-        FROM {{ pool_labels_spell }}
+        FROM {{ source('labels', pool_labels_model) }}
         WHERE blockchain = '{{blockchain}}'
+        AND source = 'query'
+        AND model_name = '{{pool_labels_model}}'
     ),
 
     token_data AS (
@@ -407,6 +411,23 @@ WITH pool_labels AS (
         GROUP BY 1, 2, 3
     ),
 
+    global_fees AS (
+        SELECT
+            evt_block_time,
+            swapFeePercentage / 1e18 AS global_swap_fee,
+            ROW_NUMBER() OVER (ORDER BY evt_block_time DESC) AS rn
+        FROM {{ source(project_decoded_as + '_' + blockchain, 'ProtocolFeeController_evt_GlobalProtocolSwapFeePercentageChanged') }}
+    ),
+
+    pool_creator_fees AS (
+        SELECT
+            evt_block_time,
+            pool,
+            poolCreatorSwapFeePercentage / 1e18 AS pool_creator_swap_fee,
+            ROW_NUMBER() OVER (PARTITION BY pool ORDER BY evt_block_time DESC) AS rn
+        FROM {{ source(project_decoded_as + '_' + blockchain, 'ProtocolFeeController_evt_PoolCreatorSwapFeePercentageChanged') }}
+    ),
+
     swaps_changes AS (
         SELECT
             day,
@@ -416,11 +437,14 @@ WITH pool_labels AS (
         FROM
             (
                 SELECT
-                    date_trunc('day', evt_block_time) AS day,
-                    pool AS pool_id,
-                    tokenIn AS token,
-                    CAST(amountIn AS INT256) AS delta
-                FROM {{ source(project_decoded_as + '_' + blockchain, 'Vault_evt_Swap') }}
+                    date_trunc('day', swap.evt_block_time) AS day,
+                    swap.pool AS pool_id,
+                    swap.tokenIn AS token,
+                    CAST(swap.amountIn AS INT256) - (CAST(swap.swapFeeAmount AS INT256) * (g.global_swap_fee + COALESCE(pc.pool_creator_swap_fee, 0))) AS delta
+                FROM {{ source(project_decoded_as + '_' + blockchain, 'Vault_evt_Swap') }} swap
+                CROSS JOIN global_fees g
+                LEFT JOIN pool_creator_fees pc ON swap.pool = pc.pool AND pc.rn = 1
+                WHERE g.rn = 1
 
                 UNION ALL
 

@@ -80,7 +80,7 @@ FROM
     ('ar-arweave', null, 'AR', null, null),
     ('glmr-moonbeam', null, 'GLMR', null, null),
     ('klay-klaytn', null, 'KLAY', null, null), --old symbol was KLAY, new symbol is KAIA, keep for existing queries downstream
-    ('klay-klaytn', null, 'KAIA', null, null), --coinpaprika hasn't updated token yet post-migration
+    ('kaia-kaia', null, 'KAIA', null, null),
     ('fuse-fuse-network', null, 'FUSE', null, null),
     ('zel-zelcash', null, 'FLUX', null, null),
     ('myria-myria', null, 'MYRIA', null, null),
@@ -91,5 +91,12 @@ FROM
     ('ron-ronin-token', null, 'RON', null, null),
     ('hype-hyperliquid', null, 'HYPE', null, null),
     ('bera-berachain', null, 'BERA', null, null),
-    ('ape-apecoin', null, 'APE', null, null)
+    ('ape-apecoin', null, 'APE', null, null),
+    ('gho-gho', null, 'GHO', null, null),
+    ('plume-plume', null, 'PLUME', null, null),
+    ('degen-degen-base', null, 'DEGEN', null, null),
+    ('soph-sophon', null, 'SOPH', null, null),
+    ('corn-corn2', null, 'BTCN', null, null),
+    ('tomo-tomochain', null, 'VIC', null, null),
+    ('s-sonic', null, 'S', null, null)
 ) as temp (token_id, blockchain, symbol, contract_address, decimals)
